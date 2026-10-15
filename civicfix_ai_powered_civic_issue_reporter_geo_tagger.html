@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CivicFix: AI-Powered Civic Issue Reporter & Geo-Tagger</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for gorgeous icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .scanner-line {
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+            position: absolute;
+            animation: scan 2s infinite ease-in-out;
+        }
+        @keyframes scan {
+            0% { top: 0%; opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { top: 100%; opacity: 0.8; }
+        }
+        .pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col selection:bg-blue-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-800/80 backdrop-blur-md border-b border-slate-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('report')">
+                <div class="bg-gradient-to-tr from-blue-600 to-indigo-500 p-2.5 rounded-xl shadow-lg shadow-blue-500/30 text-white">
+                    <i class="fa-solid fa-city text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-blue-400 bg-clip-text text-transparent">CivicFix</h1>
+                    <p class="text-xs text-slate-400 font-medium">AI Civic Issue Reporter & Geo-Tagger</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <!-- Mode Switcher -->
+                <div class="bg-slate-900/90 p-1 rounded-xl border border-slate-700 flex items-center space-x-1">
+                    <button id="citizenModeBtn" onclick="setMode('citizen')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-blue-600 text-white shadow">
+                        <i class="fa-solid fa-user mr-1.5"></i> Citizen Mode
+                    </button>
+                    <button id="authorityModeBtn" onclick="setMode('authority')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-building-shield mr-1.5"></i> Authority Portal
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Citizen View Tabs -->
+        <div id="citizenNav" class="flex flex-wrap gap-2 mb-8 border-b border-slate-800 pb-4">
+            <button onclick="switchTab('report')" id="nav-report" class="px-4 py-2 rounded-xl text-sm font-medium transition-all bg-blue-600 text-white shadow-lg shadow-blue-600/20 flex items-center space-x-2">
+                <i class="fa-solid fa-camera"></i>
+                <span>Point & Report</span>
+            </button>
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="px-4 py-2 rounded-xl text-sm font-medium transition-all bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white flex items-center space-x-2">
+                <i class="fa-solid fa-map-location-dot"></i>
+                <span>My Reports & Feed (<span id="reportCount">3</span>)</span>
+            </button>
+        </div>
+
+        <!-- Authority View Header Banner -->
+        <div id="authorityHeader" class="hidden mb-8 bg-gradient-to-r from-amber-900/40 via-slate-800 to-slate-800 border border-amber-500/30 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <span class="bg-amber-500/20 text-amber-400 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border border-amber-500/30">Municipal Control Center</span>
+                <h2 class="text-2xl font-bold mt-2 text-white">City Operations & Dispatch Portal</h2>
+                <p class="text-sm text-slate-400">Review auto-classified AI reports, dispatch work crews, and manage civic infrastructure response time.</p>
+            </div>
+            <div class="flex items-center space-x-3 bg-slate-900/80 px-4 py-3 rounded-xl border border-slate-700">
+                <div class="text-right">
+                    <div class="text-xs text-slate-400">Total Active Cases</div>
+                    <div id="authTotalCount" class="text-xl font-bold text-amber-400">3</div>
+                </div>
+                <div class="h-8 w-px bg-slate-700 mx-2"></div>
+                <div>
+                    <div class="text-xs text-slate-400">Avg Resolution</div>
+                    <div class="text-xl font-bold text-emerald-400">18.4 hrs</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 1: POINT & REPORT (CAMERA / UPLOAD & AI SIMULATOR) -->
+        <div id="tab-report" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                
+                <!-- Left: Capture / Upload / Quick Samples -->
+                <div class="lg:col-span-6 space-y-6">
+                    <div class="bg-slate-800/90 border border-slate-700/80 rounded-3xl p-6 shadow-xl backdrop-blur-sm">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-lg font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-wand-magic-sparkles text-blue-400"></i>
+                                <span>1. Capture or Select Issue Photo</span>
+                            </h2>
+                            <span class="text-xs bg-blue-500/20 text-blue-300 px-2.5 py-1 rounded-full font-medium">AI Vision Ready</span>
+                        </div>
+
+                        <!-- Dropzone / Image Preview Box -->
+                        <div id="imageDropArea" class="relative border-2 border-dashed border-slate-600 rounded-2xl p-4 text-center hover:border-blue-500 transition-all bg-slate-900/50 min-h-[280px] flex flex-col items-center justify-center overflow-hidden group cursor-pointer" onclick="document.getElementById('fileInput').click()">
+                            
+                            <!-- Scanner Animation Overlay (Hidden by default) -->
+                            <div id="scannerOverlay" class="absolute inset-0 bg-slate-900/80 z-20 hidden flex-col items-center justify-center p-6 backdrop-blur-sm">
+                                <div class="relative w-full max-w-xs h-40 bg-slate-800 rounded-xl overflow-hidden mb-4 border border-blue-500/50 shadow-2xl">
+                                    <img id="scanningImg" src="" class="w-full h-full object-cover opacity-60">
+                                    <div class="scanner-line"></div>
+                                </div>
+                                <div class="flex items-center space-x-3 text-blue-400 font-semibold animate-pulse">
+                                    <i class="fa-solid fa-atom fa-spin text-lg"></i>
+                                    <span id="scannerStatusText">Running AI Computer Vision Classification...</span>
+                                </div>
+                                <p class="text-xs text-slate-400 mt-2">Extracting GPS EXIF data & mapping municipal department...</p>
+                            </div>
+
+                            <!-- Default empty state -->
+                            <div id="emptyState" class="space-y-3 py-8">
+                                <div class="w-16 h-16 bg-blue-600/20 text-blue-400 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                                    <i class="fa-solid fa-camera-retro text-2xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-slate-200">Click to upload photo or take picture</p>
+                                    <p class="text-xs text-slate-400 mt-1">Supports JPG, PNG, WEBP (Geo-tags auto-extracted)</p>
+                                </div>
+                                <button type="button" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all">
+                                    Browse Files / Camera
+                                </button>
+                            </div>
+
+                            <!-- Active Preview state -->
+                            <div id="previewContainer" class="hidden relative w-full h-full flex flex-col items-center">
+                                <img id="selectedImagePreview" class="w-full h-64 object-cover rounded-xl shadow-md border border-slate-700">
+                                <button onclick="event.stopPropagation(); resetCapture();" class="absolute top-3 right-3 bg-slate-900/80 hover:bg-red-600 text-white p-2 rounded-full transition-colors shadow">
+                                    <i class="fa-solid fa-rotate-right text-xs"></i>
+                                </button>
+                            </div>
+                            <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+                        </div>
+
+                        <!-- Quick Test Presets -->
+                        <div class="mt-6">
+                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Or test instantly with sample issues:</p>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <button onclick="selectPreset('pothole')" class="p-3 bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 hover:border-blue-500 rounded-xl text-left transition-all group">
+                                    <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                                        <i class="fa-solid fa-road-circle-exclamation text-sm"></i>
+                                    </div>
+                                    <div class="text-xs font-bold text-slate-200">Deep Pothole</div>
+                                    <div class="text-[10px] text-slate-400">Road Works</div>
+                                </button>
+                                <button onclick="selectPreset('garbage')" class="p-3 bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 hover:border-blue-500 rounded-xl text-left transition-all group">
+                                    <div class="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                                        <i class="fa-solid fa-trash-can text-sm"></i>
+                                    </div>
+                                    <div class="text-xs font-bold text-slate-200">Garbage Dump</div>
+                                    <div class="text-[10px] text-slate-400">Sanitation</div>
+                                </button>
+                                <button onclick="selectPreset('pipe')" class="p-3 bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 hover:border-blue-500 rounded-xl text-left transition-all group">
+                                    <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                                        <i class="fa-solid fa-faucet-drip text-sm"></i>
+                                    </div>
+                                    <div class="text-xs font-bold text-slate-200">Water Leak</div>
+                                    <div class="text-[10px] text-slate-400">Water & Sewage</div>
+                                </button>
+                                <button onclick="selectPreset('light')" class="p-3 bg-slate-900/80 hover:bg-slate-700/80 border border-slate-700 hover:border-blue-500 rounded-xl text-left transition-all group">
+                                    <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                                        <i class="fa-solid fa-lightbulb text-sm"></i>
+                                    </div>
+                                    <div class="text-xs font-bold text-slate-200">Broken Light</div>
+                                    <div class="text-[10px] text-slate-400">Electrical Dept</div>
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Right: AI Classification Results & Complaint Draft Editor -->
+                <div class="lg:col-span-6 space-y-6">
+                    <div class="bg-slate-800/90 border border-slate-700/80 rounded-3xl p-6 shadow-xl backdrop-blur-sm">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-lg font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-file-shield text-emerald-400"></i>
+                                <span>2. AI Analysis & Official Draft</span>
+                            </h2>
+                            <span id="aiConfidenceBadge" class="hidden text-xs bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-full font-medium border border-emerald-500/30">Confidence: 98.4%</span>
+                        </div>
+
+                        <!-- Placeholder before photo is chosen -->
+                        <div id="aiPlaceholder" class="text-center py-16 px-4 bg-slate-900/40 rounded-2xl border border-slate-700/50">
+                            <div class="w-14 h-14 bg-slate-800 text-slate-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <i class="fa-solid fa-robot text-xl"></i>
+                            </div>
+                            <h3 class="font-semibold text-slate-300 text-sm">Awaiting Image Input</h3>
+                            <p class="text-xs text-slate-500 max-w-xs mx-auto mt-1">Upload a photo or click one of the quick test presets on the left to trigger instant AI vision classification and geo-tagging.</p>
+                        </div>
+
+                        <!-- Active AI Results Form -->
+                        <div id="aiResultsContainer" class="hidden space-y-4">
+                            
+                            <!-- Badges row -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-700">
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Detected Issue</span>
+                                    <span id="resCategory" class="text-sm font-bold text-blue-400 flex items-center mt-1">
+                                        <i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Pothole Hazard
+                                    </span>
+                                </div>
+                                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-700">
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Assigned Dept</span>
+                                    <span id="resDept" class="text-sm font-bold text-amber-400 flex items-center mt-1">
+                                        <i class="fa-solid fa-building mr-1.5"></i> Municipal Road Works
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Geo-Location Data -->
+                            <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-700 flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                        <i class="fa-solid fa-location-crosshairs text-base"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-[10px] uppercase font-bold text-slate-400">Auto-Pulled GPS Geo-Tag</div>
+                                        <div id="resAddress" class="text-xs font-semibold text-slate-200">12th Main Road, Anna Nagar West, Chennai</div>
+                                        <div id="resCoords" class="text-[10px] text-slate-400 font-mono mt-0.5">13.0850° N, 80.2100° E (Accuracy: ±2m)</div>
+                                    </div>
+                                </div>
+                                <span class="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/20">Verified</span>
+                            </div>
+
+                            <!-- Severity & Details Form -->
+                            <div class="space-y-3 pt-2">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Severity Level</label>
+                                    <select id="resSeverity" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                                        <option value="Critical Hazard">Critical Hazard (Immediate Action Required)</option>
+                                        <option value="Moderate Issue" selected>Moderate Issue (Needs Attention)</option>
+                                        <option value="Minor Cosmetic">Minor Cosmetic Defect</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Official Complaint Draft</label>
+                                    <textarea id="resComplaintText" rows="4" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono leading-relaxed"></textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Additional Citizen Notes / Landmark Hint</label>
+                                    <input type="text" id="resNotes" placeholder="e.g. Near the public bus stop, right lane." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <button onclick="submitComplaint()" class="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-paper-plane"></i>
+                                <span>One-Tap Submit to Municipal Body</span>
+                            </button>
+
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+
+        <!-- TAB 2: MY REPORTS & LIVE FEED / AUTHORITY DASHBOARD -->
+        <div id="tab-dashboard" class="hidden space-y-6">
+            
+            <!-- Stats overview cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Total Reported</p>
+                        <h3 id="statTotal" class="text-2xl font-extrabold text-white mt-1">3</h3>
+                        <p class="text-[10px] text-blue-400 mt-1"><i class="fa-solid fa-arrow-trend-up mr-1"></i>Active in your sector</p>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-600/20 text-blue-400 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-clipboard-list"></i>
+                    </div>
+                </div>
+                <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">In Progress / Dispatched</p>
+                        <h3 id="statProgress" class="text-2xl font-extrabold text-amber-400 mt-1">2</h3>
+                        <p class="text-[10px] text-amber-400 mt-1"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Crews assigned</p>
+                    </div>
+                    <div class="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-screwdriver-wrench"></i>
+                    </div>
+                </div>
+                <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Successfully Resolved</p>
+                        <h3 id="statResolved" class="text-2xl font-extrabold text-emerald-400 mt-1">1</h3>
+                        <p class="text-[10px] text-emerald-400 mt-1"><i class="fa-solid fa-circle-check mr-1"></i>Repaired this week</p>
+                    </div>
+                    <div class="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-square-check"></i>
+                    </div>
+                </div>
+                <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Civic Score</p>
+                        <h3 class="text-2xl font-extrabold text-purple-400 mt-1">380 pts</h3>
+                        <p class="text-[10px] text-purple-400 mt-1"><i class="fa-solid fa-award mr-1"></i>Gold Contributor</p>
+                    </div>
+                    <div class="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-medal"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters & Feed Header -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                <div class="flex items-center space-x-2 w-full sm:w-auto">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Filter Status:</span>
+                    <select id="filterStatus" onchange="renderReportsList()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none">
+                        <option value="ALL">All Reports</option>
+                        <option value="Submitted">Submitted / Pending</option>
+                        <option value="In Progress">In Progress (Dispatched)</option>
+                        <option value="Resolved">Resolved</option>
+                    </select>
+                </div>
+                <div class="text-xs text-slate-400">
+                    Showing real-time synced reports across local municipal zone.
+                </div>
+            </div>
+
+            <!-- Reports Feed List -->
+            <div id="reportsListContainer" class="space-y-4">
+                <!-- Populated dynamically via JS -->
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Success Modal Notification -->
+    <div id="successModal" class="fixed inset-0 bg-slate-950/80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-slate-800 border border-slate-700 rounded-3xl max-w-md w-full p-6 text-center shadow-2xl space-y-4 relative animate-in fade-in zoom-in duration-200">
+            <div class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-2xl border border-emerald-500/30">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <div>
+                <span id="modalIdBadge" class="bg-blue-500/20 text-blue-400 text-xs px-3 py-1 rounded-full font-mono font-bold">#CIVIC-8492</span>
+                <h3 class="text-xl font-bold text-white mt-2">Complaint Successfully Submitted!</h3>
+                <p class="text-xs text-slate-300 mt-1">Routed instantly to the <span id="modalDeptName" class="font-semibold text-amber-400">Municipal Road Works Department</span>.</p>
+            </div>
+            <div class="bg-slate-900/80 p-3 rounded-2xl text-left border border-slate-700/80 space-y-2">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-400">Tracking ID:</span>
+                    <span id="modalTrackingId" class="font-mono text-white font-bold">#CIVIC-8492</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-400">Status:</span>
+                    <span class="text-amber-400 font-semibold">Dispatched / Pending Inspection</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-400">SLA Target:</span>
+                    <span class="text-emerald-400 font-semibold">24 Hours</span>
+                </div>
+            </div>
+            <div class="pt-2 flex space-x-3">
+                <button onclick="closeModalAndGoDashboard()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/30">
+                    View in My Reports Feed
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-500 mt-auto">
+        <p>CivicFix AI Geo-Tagger & Municipal Dispatcher • Empowering Smart Urban Infrastructure</p>
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Mock State Database
+        let currentMode = 'citizen'; // 'citizen' or 'authority'
+        let reportsData = [
+            {
+                id: '#CIVIC-8490',
+                category: 'Pothole Hazard',
+                dept: 'Municipal Road Works',
+                address: '4th Avenue, Anna Nagar East, Chennai',
+                coords: '13.0878° N, 80.2185° E',
+                severity: 'Critical Hazard',
+                notes: 'Deep crater near school zone causing bike skids.',
+                status: 'In Progress',
+                date: 'Oct 14, 2026 - 14:32',
+                image: 'https://images.unsplash.com/photo-1515162816999-a0c47dc19fe5?auto=format&fit=crop&w=600&q=80',
+                history: [
+                    { time: 'Oct 14, 14:32', note: 'Complaint filed by Citizen #4920' },
+                    { time: 'Oct 14, 15:00', note: 'AI Vision verified severity as Critical' },
+                    { time: 'Oct 15, 09:15', note: 'Dispatched crew Team #4 (Road Repair Unit)' }
+                ]
+            },
+            {
+                id: '#CIVIC-8485',
+                category: 'Garbage Overflow',
+                dept: 'Solid Waste Management',
+                address: 'KHB Colony, 2nd Main Road, Chennai',
+                coords: '13.0721° N, 80.2012° E',
+                severity: 'Moderate Issue',
+                notes: 'Overflowing municipal bin spilling onto walkway.',
+                status: 'Resolved',
+                date: 'Oct 13, 2026 - 09:10',
+                image: 'https://images.unsplash.com/photo-1530587191325-3db32d826c1e?auto=format&fit=crop&w=600&q=80',
+                history: [
+                    { time: 'Oct 13, 09:10', note: 'Complaint filed & Geo-tagged' },
+                    { time: 'Oct 13, 11:30', note: 'Sanitation truck dispatched' },
+                    { time: 'Oct 13, 16:00', note: 'Area cleared and disinfected. Resolved.' }
+                ]
+            },
+            {
+                id: '#CIVIC-8472',
+                category: 'Water Pipeline Leak',
+                dept: 'Water & Sewage Board',
+                address: 'Poonamallee High Road, Kilpauk, Chennai',
+                coords: '13.0792° N, 80.2450° E',
+                severity: 'Critical Hazard',
+                notes: 'Continuous clean water wastage from joint pipe rupture.',
+                status: 'Submitted',
+                date: 'Oct 12, 2026 - 18:45',
+                image: 'https://images.unsplash.com/photo-1541888946425-d0fbb18f1f3e?auto=format&fit=crop&w=600&q=80',
+                history: [
+                    { time: 'Oct 12, 18:45', note: 'Auto-submitted via mobile camera' }
+                ]
+            }
+        ];
+
+        // Preset library for instant AI simulation
+        const presets = {
+            pothole: {
+                category: 'Pothole Hazard',
+                dept: 'Municipal Road Works',
+                address: '12th Main Road, Anna Nagar West, Chennai',
+                coords: '13.0850° N, 80.2100° E',
+                severity: 'Critical Hazard',
+                image: 'https://images.unsplash.com/photo-1515162816999-a0c47dc19fe5?auto=format&fit=crop&w=600&q=80',
+                draft: 'OFFICIAL MUNICIPAL COMPLAINT\n\nIssue Type: Road Surface Failure (Pothole)\nSeverity: Critical Hazard\nLocation: 12th Main Road, Anna Nagar West, Chennai\nGPS Coordinates: 13.0850° N, 80.2100° E\n\nDescription: Deep structural pothole identified on primary carriageway. Posing severe risk to two-wheelers and vehicular suspension during night hours. Immediate patching and resurfacing requested.'
+            },
+            garbage: {
+                category: 'Garbage Overflow',
+                dept: 'Solid Waste Management',
+                address: 'Gandhi Bazaar, T. Nagar, Chennai',
+                coords: '13.0418° N, 80.2341° E',
+                severity: 'Moderate Issue',
+                image: 'https://images.unsplash.com/photo-1530587191325-3db32d826c1e?auto=format&fit=crop&w=600&q=80',
+                draft: 'OFFICIAL MUNICIPAL COMPLAINT\n\nIssue Type: Solid Waste Overflow\nSeverity: Moderate Issue\nLocation: Gandhi Bazaar, T. Nagar, Chennai\nGPS Coordinates: 13.0418° N, 80.2341° E\n\nDescription: Municipal waste bin capacity exceeded by 200%. Stray animals scattering garbage onto pedestrian pathway. Requesting immediate clearance and scheduled bin pickup frequency review.'
+            },
+            pipe: {
+                category: 'Water Pipeline Leak',
+                dept: 'Water & Sewage Board',
+                address: 'Chetpet 1st Cross Street, Chennai',
+                coords: '13.0760° N, 80.2421° E',
+                severity: 'Critical Hazard',
+                image: 'https://images.unsplash.com/photo-1541888946425-d0fbb18f1f3e?auto=format&fit=crop&w=600&q=80',
+                draft: 'OFFICIAL MUNICIPAL COMPLAINT\n\nIssue Type: Water Main Rupture\nSeverity: Critical Hazard\nLocation: Chetpet 1st Cross Street, Chennai\nGPS Coordinates: 13.0760° N, 80.2421° E\n\nDescription: Underground pipeline joint failure resulting in continuous water leakage onto asphalt. Causing road erosion and potable water loss. Urgent valve shutdown and repair needed.'
+            },
+            light: {
+                category: 'Street Light Failure',
+                dept: 'Electrical & Lighting Dept',
+                address: 'Besant Nagar 3nd Seaward Road, Chennai',
+                coords: '13.0012° N, 80.2701° E',
+                severity: 'Moderate Issue',
+                image: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80',
+                draft: 'OFFICIAL MUNICIPAL COMPLAINT\n\nIssue Type: Street Light Outage\nSeverity: Moderate Issue\nLocation: Besant Nagar 3rd Seaward Road, Chennai\nGPS Coordinates: 13.0012° N, 80.2701° E\n\nDescription: Municipal pole #TN-CHN-492 flickering and completely dark for 3 consecutive nights. Creating blind spot and safety hazard for pedestrians.'
+            }
+        };
+
+        // Switch Mode (Citizen vs Authority)
+        function setMode(mode) {
+            currentMode = mode;
+            const citizenBtn = document.getElementById('citizenModeBtn');
+            const authorityBtn = document.getElementById('authorityModeBtn');
+            const authHeader = document.getElementById('authorityHeader');
+            const citizenNav = document.getElementById('citizenNav');
+
+            if (mode === 'authority') {
+                authorityBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-amber-600 text-white shadow";
+                citizenBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-white";
+                authHeader.classList.remove('hidden');
+                citizenNav.classList.add('hidden');
+                switchTab('dashboard');
+            } else {
+                citizenBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-blue-600 text-white shadow";
+                authorityBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-white";
+                authHeader.classList.add('hidden');
+                citizenNav.classList.remove('hidden');
+                switchTab('report');
+            }
+        }
+
+        // Switch Tabs
+        function switchTab(tabName) {
+            const tabReport = document.getElementById('tab-report');
+            const tabDashboard = document.getElementById('tab-dashboard');
+            const navReport = document.getElementById('nav-report');
+            const navDashboard = document.getElementById('nav-dashboard');
+
+            if (tabName === 'report') {
+                tabReport.classList.remove('hidden');
+                tabDashboard.classList.add('hidden');
+                if (currentMode === 'citizen') {
+                    navReport.className = "px-4 py-2 rounded-xl text-sm font-medium transition-all bg-blue-600 text-white shadow-lg shadow-blue-600/20 flex items-center space-x-2";
+                    navDashboard.className = "px-4 py-2 rounded-xl text-sm font-medium transition-all bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white flex items-center space-x-2";
+                }
+            } else {
+                tabReport.classList.add('hidden');
+                tabDashboard.classList.remove('hidden');
+                if (currentMode === 'citizen') {
+                    navDashboard.className = "px-4 py-2 rounded-xl text-sm font-medium transition-all bg-blue-600 text-white shadow-lg shadow-blue-600/20 flex items-center space-x-2";
+                    navReport.className = "px-4 py-2 rounded-xl text-sm font-medium transition-all bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white flex items-center space-x-2";
+                }
+                renderReportsList();
+            }
+        }
+
+        // Handle Image Upload
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    runAiSimulation(e.target.result, 'pothole'); // Default fallback classification
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Preset Selection Simulation with Scanner animation
+        function selectPreset(presetKey) {
+            const preset = presets[presetKey];
+            runAiSimulation(preset.image, presetKey);
+        }
+
+        // Run AI Vision Scanner Animation
+        function runAiSimulation(imgSrc, presetKey) {
+            const overlay = document.getElementById('scannerOverlay');
+            const scanningImg = document.getElementById('scanningImg');
+            const emptyState = document.getElementById('emptyState');
+            const previewContainer = document.getElementById('previewContainer');
+            const selectedImagePreview = document.getElementById('selectedImagePreview');
+            const aiPlaceholder = document.getElementById('aiPlaceholder');
+            const aiResultsContainer = document.getElementById('aiResultsContainer');
+            const aiConfidenceBadge = document.getElementById('aiConfidenceBadge');
+
+            // Set images
+            scanningImg.src = imgSrc;
+            selectedImagePreview.src = imgSrc;
+
+            emptyState.classList.add('hidden');
+            previewContainer.classList.remove('hidden');
+            overlay.classList.remove('hidden');
+
+            // Simulate AI steps
+            const statuses = [
+                "Extracting EXIF GPS coordinates...",
+                "Running YOLOv8 vision classification model...",
+                "Matching nearest municipal department & SLA...",
+                "Drafting official complaint package..."
+            ];
+
+            let step = 0;
+            const statusText = document.getElementById('scannerStatusText');
+            const interval = setInterval(() => {
+                step++;
+                if (step < statuses.length) {
+                    statusText.innerText = statuses[step];
+                }
+            }, 400);
+
+            setTimeout(() => {
+                clearInterval(interval);
+                overlay.classList.add('hidden');
+                aiPlaceholder.classList.add('hidden');
+                aiResultsContainer.classList.remove('hidden');
+                aiConfidenceBadge.classList.remove('hidden');
+
+                // Populate form fields with preset or default
+                const preset = presets[presetKey] || presets['pothole'];
+                document.getElementById('resCategory').innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1.5"></i> ${preset.category}`;
+                document.getElementById('resDept').innerHTML = `<i class="fa-solid fa-building mr-1.5"></i> ${preset.dept}`;
+                document.getElementById('resAddress').innerText = preset.address;
+                document.getElementById('resCoords').innerText = preset.coords + " (Accuracy: ±1.8m)";
+                document.getElementById('resSeverity').value = preset.severity;
+                document.getElementById('resComplaintText').value = preset.draft;
+                
+                // Keep track of active image
+                window.activeCapturedImage = imgSrc;
+                window.activePresetData = preset;
+            }, 1800);
+        }
+
+        // Reset Capture
+        function resetCapture() {
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('previewContainer').classList.add('hidden');
+            document.getElementById('aiPlaceholder').classList.remove('hidden');
+            document.getElementById('aiResultsContainer').classList.add('hidden');
+            document.getElementById('aiConfidenceBadge').classList.add('hidden');
+            document.getElementById('fileInput').value = '';
+        }
+
+        // Submit Complaint
+        function submitComplaint() {
+            const category = document.getElementById('resCategory').innerText.trim();
+            const dept = document.getElementById('resDept').innerText.trim();
+            const address = document.getElementById('resAddress').innerText;
+            const coords = document.getElementById('resCoords').innerText;
+            const severity = document.getElementById('resSeverity').value;
+            const notes = document.getElementById('resNotes').value;
+            const draftText = document.getElementById('resComplaintText').value;
+            const imgSrc = window.activeCapturedImage || 'https://images.unsplash.com/photo-1515162816999-a0c47dc19fe5?auto=format&fit=crop&w=600&q=80';
+
+            const newId = '#CIVIC-' + Math.floor(1000 + Math.random() * 9000);
+
+            const newReport = {
+                id: newId,
+                category: category,
+                dept: dept,
+                address: address,
+                coords: coords,
+                severity: severity,
+                notes: notes || 'No additional notes provided.',
+                status: 'Submitted',
+                date: 'Just now',
+                image: imgSrc,
+                history: [
+                    { time: 'Just now', note: 'One-tap submitted & Geo-tagged by citizen' }
+                ]
+            };
+
+            reportsData.unshift(newReport);
+
+            // Update stats
+            updateStatsCount();
+
+            // Show success modal
+            document.getElementById('modalIdBadge').innerText = newId;
+            document.getElementById('modalTrackingId').innerText = newId;
+            document.getElementById('modalDeptName').innerText = dept;
+            document.getElementById('successModal').classList.remove('hidden');
+        }
+
+        function closeModalAndGoDashboard() {
+            document.getElementById('successModal').classList.add('hidden');
+            resetCapture();
+            switchTab('dashboard');
+        }
+
+        function updateStatsCount() {
+            const total = reportsData.length;
+            const inProg = reportsData.filter(r => r.status === 'In Progress').length;
+            const resolved = reportsData.filter(r => r.status === 'Resolved').length;
+
+            document.getElementById('reportCount').innerText = total;
+            document.getElementById('statTotal').innerText = total;
+            document.getElementById('statProgress').innerText = inProg + reportsData.filter(r => r.status === 'Submitted').length;
+            document.getElementById('statResolved').innerText = resolved;
+            document.getElementById('authTotalCount').innerText = total;
+        }
+
+        // Render Reports List
+        function renderReportsList() {
+            const container = document.getElementById('reportsListContainer');
+            const filter = document.getElementById('filterStatus').value;
+            container.innerHTML = '';
+
+            const filtered = reportsData.filter(r => {
+                if (filter === 'ALL') return true;
+                if (filter === 'Submitted' && (r.status === 'Submitted')) return true;
+                return r.status === filter;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 bg-slate-800/60 rounded-2xl border border-slate-700">
+                        <i class="fa-solid fa-folder-open text-3xl text-slate-600 mb-2"></i>
+                        <p class="text-sm font-semibold text-slate-400">No reports found matching this filter.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(report => {
+                let statusBadgeColor = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+                if (report.status === 'Resolved') statusBadgeColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+                if (report.status === 'In Progress') statusBadgeColor = 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+
+                let severityColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+                if (report.severity.includes('Critical')) severityColor = 'text-red-400 bg-red-500/10 border-red-500/20';
+
+                let historyHtml = report.history.map(h => `<li class="text-[11px] text-slate-400"><span class="font-mono font-bold text-slate-300">[${h.time}]</span> ${h.note}</li>`).join('');
+
+                let authorityActions = '';
+                if (currentMode === 'authority') {
+                    authorityActions = `
+                        <div class="mt-4 pt-3 border-t border-slate-700/80 flex flex-wrap items-center justify-between gap-3">
+                            <span class="text-xs font-semibold text-slate-300">Authority Action:</span>
+                            <div class="flex space-x-2">
+                                <button onclick="updateReportStatus('${report.id}', 'In Progress')" class="px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">
+                                    <i class="fa-solid fa-screwdriver-wrench mr-1"></i> Dispatch Crew
+                                </button>
+                                <button onclick="updateReportStatus('${report.id}', 'Resolved')" class="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition">
+                                    <i class="fa-solid fa-check mr-1"></i> Mark Resolved
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const card = document.createElement('div');
+                card.className = "bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 shadow-xl hover:border-slate-600 transition-all";
+                card.innerHTML = `
+                    <div class="flex flex-col md:flex-row gap-5 items-start">
+                        <img src="${report.image}" class="w-full md:w-36 h-28 object-cover rounded-xl border border-slate-700 shadow-sm flex-shrink-0">
+                        <div class="flex-grow space-y-2 w-full">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-mono text-xs font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">${report.id}</span>
+                                    <h4 class="font-bold text-white text-base">${report.category}</h4>
+                                </div>
+                                <span class="text-xs px-2.5 py-1 rounded-full font-semibold border ${statusBadgeColor}">${report.status}</span>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                                <span class="flex items-center text-amber-300"><i class="fa-solid fa-building mr-1"></i> ${report.dept}</span>
+                                <span class="flex items-center text-slate-400"><span class="${severityColor} px-2 py-0.5 rounded text-[10px] font-bold border">${report.severity}</span></span>
+                                <span class="text-slate-500">•</span>
+                                <span class="text-slate-400">${report.date}</span>
+                            </div>
+
+                            <p class="text-xs text-slate-300 flex items-center">
+                                <i class="fa-solid fa-location-dot text-emerald-400 mr-1.5"></i>
+                                <span>${report.address} <span class="text-slate-500 font-mono text-[10px]">(${report.coords})</span></span>
+                            </p>
+
+                            <!-- Timeline activity logs -->
+                            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 mt-2">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Dispatch & Activity Log</div>
+                                <ul class="space-y-1">
+                                    ${historyHtml}
+                                </ul>
+                            </div>
+
+                            ${authorityActions}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Authority status updater
+        function updateReportStatus(reportId, newStatus) {
+            const report = reportsData.find(r => r.id === reportId);
+            if (report) {
+                report.status = newStatus;
+                const timestamp = 'Just now';
+                report.history.push({
+                    time: timestamp,
+                    note: `Status updated to [${newStatus}] by Municipal Officer.`
+                });
+                renderReportsList();
+                updateStatsCount();
+            }
+        }
+
+        // Initialize counts on load
+        window.onload = function() {
+            updateStatsCount();
+        };
+    </script>
+</body>
+</html>
